@@ -30,9 +30,9 @@
  *   - 在根目錄維護一個「形象寫真報價總覽」Google Sheet，每次歸檔追加一列
  */
 
-// ⚠️ Drive 根資料夾 ID（已預先建立「形象寫真報價」資料夾）
-// 資料夾網址：https://drive.google.com/drive/folders/1DqygLkHfiIQfkBmsj2eBuwhnrIpE_IBg
-const ROOT_FOLDER_ID = '1DqygLkHfiIQfkBmsj2eBuwhnrIpE_IBg'
+// ⚠️ Drive 根資料夾 ID（kenhepburns@gmail.com 的「形象寫真報價」資料夾）
+// 資料夾網址：https://drive.google.com/drive/folders/1AiLZ-8h7eyBOOLrRGVss8VqlzrzrOSB7
+const ROOT_FOLDER_ID = '1AiLZ-8h7eyBOOLrRGVss8VqlzrzrOSB7'
 const SHEET_NAME = '形象寫真報價總覽'
 
 function doPost(e) {
