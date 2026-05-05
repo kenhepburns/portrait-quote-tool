@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>形象寫真報價系統</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Noto Sans TC', sans-serif; }
+
+  .quote-page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    background: white;
+    padding: 16mm 18mm;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.12);
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+  .q-row { break-inside: avoid; page-break-inside: avoid; }
+  .anchor-target { scroll-margin-top: 80px; }
+
+  .section-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .section-title { font-size: 0.875rem; font-weight: 700; color: #475569; padding: 12px 18px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; border-radius: 12px 12px 0 0; display: flex; align-items: center; justify-content: space-between; }
+  .field-label { font-size: 0.75rem; font-weight: 500; color: #64748b; display: block; margin-bottom: 4px; }
+  .input-base { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 0.875rem; outline: none; transition: all 0.15s; }
+  .input-base:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(96,165,250,0.15); }
+
+  .pill-btn { padding: 6px 14px; font-size: 0.75rem; border-radius: 999px; border: 1px solid #cbd5e1; background: white; color: #64748b; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .pill-btn:hover { border-color: #94a3b8; color: #334155; }
+  .pill-btn.active { background: #1a3560; border-color: #1a3560; color: white; }
+
+  @media print {
+    .no-print { display: none !important; }
+    body { margin: 0; background: white; }
+    .quote-page { box-shadow: none; margin: 0; width: 100%; padding: 10mm 14mm; }
+  }
+
+  .fade-enter-active, .fade-leave-active { transition: opacity .3s, transform .3s; }
+  .fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(8px); }
+  .slide-panel-enter-active, .slide-panel-leave-active { transition: opacity .25s; }
+  .slide-panel-enter-from, .slide-panel-leave-to { opacity: 0; }
+  .slide-panel-enter-active .relative, .slide-panel-leave-active .relative { transition: transform .3s cubic-bezier(.4,0,.2,1); }
+  .slide-panel-enter-from .relative, .slide-panel-leave-to .relative { transform: translateX(100%); }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<div id="app">
+
+  <!-- ── Top Control Bar ── -->
+  <div class="no-print fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-50 shadow-sm">
+    <div class="px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-base font-bold text-slate-700 whitespace-nowrap">📸 形象寫真報價</span>
+        <span class="text-xs text-slate-400 font-mono bg-slate-100 px-2 py-0.5 rounded">{{ quote.number }}</span>
+        <select v-model="quote.status" class="text-xs border border-slate-200 rounded px-2 py-1 bg-white">
+          <option value="draft">📝 草稿</option>
+          <option value="sent">📤 已寄出</option>
+          <option value="won">✅ 已成交</option>
+          <option value="lost">❌ 已取消</option>
+        </select>
+      </div>
+      <div class="flex gap-2 items-center flex-wrap">
+        <button @click="previewMode = !previewMode"
+          class="px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-50">
+          {{ previewMode ? '✏️ 編輯' : '👁 預覽' }}
+        </button>
+
+        <!-- 簡潔版 / 詳細版 切換 -->
+        <div class="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
+          <button @click="docMode = 'simple'"
+            :class="docMode === 'simple' ? 'bg-white shadow text-slate-700 font-semibold' : 'text-slate-400'"
+            class="px-3 py-1 rounded text-xs">簡潔版</button>
+          <button @click="docMode = 'detail'"
+            :class="docMode === 'detail' ? 'bg-blue-600 text-white shadow font-semibold' : 'text-slate-400'"
+            class="px-3 py-1 rounded text-xs">詳細版</button>
+        </div>
+
+        <button @click="resetQuote()"
+          class="px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-500 hover:bg-slate-50">
+          🔄 新報價
+        </button>
+
+        <button @click="downloadPDF()"
+          class="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 font-medium">
+          📄 PDF
+        </button>
+
+        <button @click="downloadJPG()"
+          class="px-3 py-1.5 bg-pink-500 text-white rounded text-sm hover:bg-pink-600 font-medium">
+          🖼 JPG
+        </button>
+
+        <button @click="archiveToDrive()" :disabled="archiving"
+          class="px-4 py-1.5 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700 font-medium disabled:opacity-50">
+          {{ archiving ? '歸檔中...' : '☁️ 歸檔' }}
+        </button>
+
+        <button @click="openHistory()"
+          class="px-4 py-1.5 bg-violet-600 text-white rounded text-sm hover:bg-violet-700 font-medium">
+          📋 歷史
+        </button>
+
+        <button @click="$refs.importFile.click()"
+          class="px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-500 hover:bg-slate-50">
+          📂 匯入
+        </button>
+        <input ref="importFile" type="file" accept=".json" class="hidden" @change="loadFromFile">
+      </div>
+    </div>
+
+    <!-- 區塊錨點導覽 -->
+    <div v-if="!previewMode" class="px-4 pb-2 flex gap-1.5 flex-wrap text-xs">
+      <a href="#sec-company" class="pill-btn">🏢 公司</a>
+      <a href="#sec-client" class="pill-btn">👤 客戶</a>
+      <a href="#sec-shoot" class="pill-btn">📷 拍攝服務</a>
+      <a href="#sec-product" class="pill-btn">💎 產品內容</a>
+      <a href="#sec-addon" class="pill-btn">➕ 加購項目</a>
+      <a href="#sec-discount" class="pill-btn">🎁 優惠折扣</a>
+      <a href="#sec-terms" class="pill-btn">📜 條款</a>
+      <a href="#sec-delivery" class="pill-btn">📦 交件</a>
+      <a href="#sec-preview" class="pill-btn">📄 預覽</a>
+    </div>
+  </div>
+
+  <div class="pt-28 pb-12">
+
+    <!-- ── Edit Form ── -->
+    <div v-if="!previewMode" class="max-w-5xl mx-auto px-4 space-y-4">
+
+      <!-- 公司資訊 -->
+      <div id="sec-company" class="anchor-target section-card">
+        <div class="section-title">🏢 公司資訊</div>
+        <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label class="field-label">公司名稱</label>
+            <input v-model="company.name" class="input-base" placeholder="○○攝影工作室">
+          </div>
+          <div>
+            <label class="field-label">統一編號</label>
+            <input v-model="company.taxId" class="input-base" placeholder="12345678">
+          </div>
+          <div>
+            <label class="field-label">電話</label>
+            <input v-model="company.phone" class="input-base" placeholder="02-1234-5678">
+          </div>
+          <div class="md:col-span-2">
+            <label class="field-label">地址</label>
+            <input v-model="company.address" class="input-base" placeholder="台北市○○區○○路○○號">
+          </div>
+          <div>
+            <label class="field-label">Email</label>
+            <input v-model="company.email" class="input-base" placeholder="contact@studio.com">
+          </div>
+          <div>
+            <label class="field-label">Logo</label>
+            <div @click="$refs.logoInput.click()"
+              class="border-2 border-dashed border-slate-300 rounded-lg px-3 py-2 text-center cursor-pointer hover:border-blue-400 h-[38px] flex items-center justify-center">
+              <img v-if="company.logo" :src="company.logo" class="h-6 object-contain">
+              <span v-else class="text-xs text-slate-400">點擊上傳 Logo</span>
+            </div>
+            <input type="file" ref="logoInput" class="hidden" accept="image/*" @change="uploadLogo">
+          </div>
+          <div class="md:col-span-2">
+            <label class="field-label">☁️ Google Apps Script 網址（雲端歸檔功能必填）</label>
+            <input v-model="settings.scriptUrl" class="input-base font-mono"
+              placeholder="https://script.google.com/macros/s/.../exec">
+          </div>
+          <div>
+            <label class="field-label">報價單編號前綴</label>
+            <input v-model="settings.quotePrefix" class="input-base" placeholder="PT">
+          </div>
+        </div>
+      </div>
+
+      <!-- 客戶資訊 -->
+      <div id="sec-client" class="anchor-target section-card">
+        <div class="section-title">
+          👤 客戶資訊
+          <div v-if="clientHistory.length > 0" class="relative client-dropdown-wrap">
+            <button @click="showClientDropdown = !showClientDropdown"
+              class="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-1 bg-white">
+              📋 歷史客戶（{{ clientHistory.length }}）
+            </button>
+            <div v-if="showClientDropdown"
+              class="absolute right-0 top-8 bg-white border border-slate-200 rounded-lg shadow-lg z-50 w-72 overflow-hidden">
+              <div class="px-3 py-2 border-b border-slate-100">
+                <input v-model="clientFilter" class="w-full text-xs border border-slate-200 rounded px-2 py-1 outline-none" placeholder="搜尋客戶...">
+              </div>
+              <div class="max-h-52 overflow-y-auto">
+                <div v-for="(c, i) in filteredClients" :key="i"
+                  class="flex items-center px-3 py-2.5 hover:bg-blue-50 border-b border-slate-50 group">
+                  <div @click="loadClient(c)" class="flex-1 cursor-pointer min-w-0">
+                    <div class="text-sm font-medium text-slate-700 truncate">{{ c.name }}</div>
+                    <div class="text-xs text-slate-400">{{ c.phone || c.email || '無聯絡資料' }}</div>
+                  </div>
+                  <button @click.stop="deleteClientHistory(clientHistory.indexOf(c))"
+                    class="ml-2 text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100 text-xs">✕</button>
+                </div>
+                <div v-if="filteredClients.length === 0" class="px-3 py-3 text-xs text-slate-400 text-center">查無記錄</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="field-label">客戶姓名 / 公司</label>
+            <input v-model="client.name" class="input-base" placeholder="王小明 / ○○股份有限公司">
+          </div>
+          <div>
+            <label class="field-label">聯絡人</label>
+            <input v-model="client.contact" class="input-base" placeholder="若同上可留空">
+          </div>
+          <div>
+            <label class="field-label">電話</label>
+            <input v-model="client.phone" class="input-base" placeholder="0912-345-678">
+          </div>
+          <div>
+            <label class="field-label">Email</label>
+            <input v-model="client.email" class="input-base" placeholder="email@example.com">
+          </div>
+          <div>
+            <label class="field-label">統一編號（如需三聯式）</label>
+            <input v-model="client.taxId" class="input-base" placeholder="可留空">
+          </div>
+          <div>
+            <label class="field-label">拍攝日期</label>
+            <input v-model="client.shootDate" type="date" class="input-base">
+          </div>
+          <div class="md:col-span-2">
+            <label class="field-label">客戶備註</label>
+            <textarea v-model="client.note" rows="2" class="input-base resize-none" placeholder="特殊需求、來源管道等"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 拍攝服務 -->
+      <div id="sec-shoot" class="anchor-target section-card">
+        <div class="section-title">
+          📷 拍攝服務
+          <span class="text-xs font-normal text-slate-400">勾選欲啟用的項目</span>
+        </div>
+        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+
+          <!-- 拍攝時間 -->
+          <div class="flex items-start gap-2">
+            <input type="checkbox" v-model="shoot.time.enabled" class="mt-2">
+            <div class="flex-1" :class="!shoot.time.enabled && 'opacity-40'">
+              <label class="field-label">⏱ 拍攝時間</label>
+              <input v-model="shoot.time.value" :disabled="!shoot.time.enabled" class="input-base" placeholder="例：2 小時 / 半天 / 全天">
+            </div>
+          </div>
+
+          <!-- 拍攝套數 -->
+          <div class="flex items-start gap-2">
+            <input type="checkbox" v-model="shoot.outfits.enabled" class="mt-2">
+            <div class="flex-1" :class="!shoot.outfits.enabled && 'opacity-40'">
+              <label class="field-label">👗 拍攝套數</label>
+              <input v-model="shoot.outfits.value" :disabled="!shoot.outfits.enabled" class="input-base" placeholder="例：3 套">
+            </div>
+          </div>
+
+          <!-- 妝髮造型 -->
+          <div class="flex items-start gap-2">
+            <input type="checkbox" v-model="shoot.makeup.enabled" class="mt-2">
+            <div class="flex-1" :class="!shoot.makeup.enabled && 'opacity-40'">
+              <label class="field-label">💄 妝髮造型</label>
+              <select v-model="shoot.makeup.type" :disabled="!shoot.makeup.enabled" class="input-base">
+                <option value="included">基本方案內含</option>
+                <option value="addon">加購項目</option>
+                <option value="none">無</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 服裝 -->
+          <div class="flex items-start gap-2">
+            <input type="checkbox" v-model="shoot.clothing.enabled" class="mt-2">
+            <div class="flex-1" :class="!shoot.clothing.enabled && 'opacity-40'">
+              <label class="field-label">👕 服裝</label>
+              <select v-model="shoot.clothing.type" :disabled="!shoot.clothing.enabled" class="input-base">
+                <option value="included">包含服裝</option>
+                <option value="self">服裝自備</option>
+              </select>
+              <input v-if="shoot.clothing.type === 'included' && shoot.clothing.enabled"
+                v-model="shoot.clothing.count" class="input-base mt-2" placeholder="包含套數，例：3 套">
+            </div>
+          </div>
+
+          <!-- 禮服（服裝自備時隱藏） -->
+          <div v-if="!(shoot.clothing.enabled && shoot.clothing.type === 'self')" class="flex items-start gap-2">
+            <input type="checkbox" v-model="shoot.dress.enabled" class="mt-2">
+            <div class="flex-1" :class="!shoot.dress.enabled && 'opacity-40'">
+              <label class="field-label">👰 禮服</label>
+              <input v-model="shoot.dress.value" :disabled="!shoot.dress.enabled" class="input-base" placeholder="例：含 1 套禮服">
+            </div>
+          </div>
+
+          <!-- 拍攝地點 -->
+          <div class="flex items-start gap-2">
+            <input type="checkbox" v-model="shoot.location.enabled" class="mt-2">
+            <div class="flex-1" :class="!shoot.location.enabled && 'opacity-40'">
+              <label class="field-label">📍 拍攝地點</label>
+              <select v-model="shoot.location.type" :disabled="!shoot.location.enabled" class="input-base">
+                <option value="studio">棚拍</option>
+                <option value="outdoor">外拍</option>
+                <option value="custom">客戶指定</option>
+              </select>
+              <input v-if="shoot.location.type !== 'studio' && shoot.location.enabled"
+                v-model="shoot.location.detail" class="input-base mt-2" placeholder="地點 / 跨縣市說明">
+            </div>
+          </div>
+
+          <!-- 拍攝風格 -->
+          <div class="flex items-start gap-2">
+            <input type="checkbox" v-model="shoot.style.enabled" class="mt-2">
+            <div class="flex-1" :class="!shoot.style.enabled && 'opacity-40'">
+              <label class="field-label">🎨 拍攝風格</label>
+              <input v-model="shoot.style.value" :disabled="!shoot.style.enabled" class="input-base" placeholder="個人 / 形象照 / 婚紗 / 親子 / 全家福">
+            </div>
+          </div>
+
+          <!-- 指定攝影師 -->
+          <div class="flex items-start gap-2">
+            <input type="checkbox" v-model="shoot.photographer.enabled" class="mt-2">
+            <div class="flex-1" :class="!shoot.photographer.enabled && 'opacity-40'">
+              <label class="field-label">📸 指定攝影師</label>
+              <input v-model="shoot.photographer.value" :disabled="!shoot.photographer.enabled" class="input-base" placeholder="攝影師名稱 / 等級加價">
+            </div>
+          </div>
+
+          <!-- 平假日 -->
+          <div class="flex items-start gap-2">
+            <input type="checkbox" v-model="shoot.weekday.enabled" class="mt-2">
+            <div class="flex-1" :class="!shoot.weekday.enabled && 'opacity-40'">
+              <label class="field-label">📅 平日 / 假日</label>
+              <select v-model="shoot.weekday.type" :disabled="!shoot.weekday.enabled" class="input-base">
+                <option value="weekday">平日</option>
+                <option value="weekend">假日（加價）</option>
+              </select>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 主要產品 -->
+      <div id="sec-product" class="anchor-target section-card">
+        <div class="section-title">
+          💎 主要產品（基本方案）
+          <button @click="addProduct()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ 新增項目</button>
+        </div>
+        <div class="p-5 space-y-2">
+          <div class="grid text-xs font-semibold text-slate-500 px-3 pb-2"
+               style="grid-template-columns: 32px 2fr 70px 70px 110px 110px 1fr 32px;">
+            <span></span>
+            <span>項目名稱</span>
+            <span class="text-center">數量</span>
+            <span class="text-center">單位</span>
+            <span class="text-right">單價</span>
+            <span class="text-right">金額</span>
+            <span class="pl-3">備註</span>
+            <span></span>
+          </div>
+          <div v-for="(p, idx) in products" :key="idx"
+               class="grid items-center gap-1 bg-slate-50 rounded-lg p-2"
+               :class="!p.enabled && 'opacity-50'"
+               style="grid-template-columns: 32px 2fr 70px 70px 110px 110px 1fr 32px;">
+            <input type="checkbox" v-model="p.enabled" class="ml-2">
+            <input v-model="p.name" :disabled="!p.enabled" class="input-base" placeholder="精修電子檔">
+            <input v-model.number="p.qty" :disabled="!p.enabled" type="number" min="0" class="input-base text-center">
+            <input v-model="p.unit" :disabled="!p.enabled" class="input-base text-center" placeholder="張">
+            <input v-model.number="p.price" :disabled="!p.enabled" type="number" min="0" class="input-base text-right">
+            <span class="text-right text-sm font-semibold text-slate-700">NT$ {{ fmt(productTotal(p)) }}</span>
+            <input v-model="p.note" :disabled="!p.enabled" class="input-base ml-2 text-xs" placeholder="說明">
+            <button @click="products.splice(idx, 1)" class="text-slate-300 hover:text-red-400 text-sm">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 加購項目 -->
+      <div id="sec-addon" class="anchor-target section-card">
+        <div class="section-title">
+          ➕ 加購項目
+          <div class="flex gap-2 items-center">
+            <select v-model="addonPreset" @change="addAddonFromPreset()" class="text-xs border border-slate-200 rounded px-2 py-1">
+              <option value="">+ 快速新增...</option>
+              <option v-for="p in addonPresets" :key="p.name" :value="p.name">{{ p.name }}</option>
+            </select>
+            <button @click="addAddon()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ 自訂</button>
+          </div>
+        </div>
+        <div class="p-5 space-y-2">
+          <div v-if="addons.length === 0" class="text-center text-sm text-slate-400 py-6">尚無加購項目，可從上方下拉選單快速新增</div>
+          <div class="grid text-xs font-semibold text-slate-500 px-3 pb-2"
+               v-if="addons.length > 0"
+               style="grid-template-columns: 32px 2fr 70px 70px 110px 110px 1fr 32px;">
+            <span></span><span>項目名稱</span><span class="text-center">數量</span><span class="text-center">單位</span>
+            <span class="text-right">單價</span><span class="text-right">金額</span><span class="pl-3">備註</span><span></span>
+          </div>
+          <div v-for="(a, idx) in addons" :key="idx"
+               class="grid items-center gap-1 bg-amber-50/50 rounded-lg p-2"
+               :class="[!a.enabled && 'opacity-50', addonHidden(a) && 'opacity-30 line-through']"
+               style="grid-template-columns: 32px 2fr 70px 70px 110px 110px 1fr 32px;">
+            <input type="checkbox" v-model="a.enabled" class="ml-2">
+            <input v-model="a.name" :disabled="!a.enabled" class="input-base" placeholder="加購項目">
+            <input v-model.number="a.qty" :disabled="!a.enabled" type="number" min="0" class="input-base text-center">
+            <input v-model="a.unit" :disabled="!a.enabled" class="input-base text-center" placeholder="張">
+            <input v-model.number="a.price" :disabled="!a.enabled" type="number" min="0" class="input-base text-right">
+            <span class="text-right text-sm font-semibold text-slate-700">NT$ {{ fmt(productTotal(a)) }}</span>
+            <input v-model="a.note" :disabled="!a.enabled" class="input-base ml-2 text-xs" placeholder="說明">
+            <button @click="addons.splice(idx, 1)" class="text-slate-300 hover:text-red-400 text-sm">✕</button>
+          </div>
+
+          <!-- 全贈警示 -->
+          <div v-if="hasFullGift" class="mt-3 p-3 bg-amber-50 border-l-4 border-amber-400 rounded text-xs text-amber-800">
+            ⚠️ 已啟用「檔案全贈」：原檔不含精修，如需精修請另行加購（已自動於下方加入「全贈後加精修」項目）
+          </div>
+        </div>
+      </div>
+
+      <!-- 優惠折扣 -->
+      <div id="sec-discount" class="anchor-target section-card">
+        <div class="section-title">🎁 優惠折扣</div>
+        <div class="p-5 space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="field-label">優惠對象（族群）</label>
+              <select v-model="discount.group" class="input-base">
+                <option value="">無 / 一般客戶</option>
+                <option value="老客戶回饋">老客戶回饋</option>
+                <option value="企業專案">企業專案</option>
+                <option value="團購專案">團購專案</option>
+                <option value="銀髮族優惠">銀髮族優惠</option>
+                <option value="親子優惠">親子優惠</option>
+                <option value="custom">自訂...</option>
+              </select>
+              <input v-if="discount.group === 'custom'" v-model="discount.customGroup"
+                class="input-base mt-2" placeholder="自訂優惠名稱">
+            </div>
+            <div>
+              <label class="field-label">百分比折扣 (%)</label>
+              <div class="flex items-center gap-2">
+                <input type="checkbox" v-model="discount.pctEnabled">
+                <input v-model.number="discount.pct" :disabled="!discount.pctEnabled" type="number" min="0" max="100"
+                  class="input-base" placeholder="例：10 = 9 折">
+              </div>
+            </div>
+            <div>
+              <label class="field-label">手動折扣金額 (NT$)</label>
+              <div class="flex items-center gap-2">
+                <input type="checkbox" v-model="discount.amtEnabled">
+                <input v-model.number="discount.amt" :disabled="!discount.amtEnabled" type="number" min="0"
+                  class="input-base" placeholder="0">
+              </div>
+            </div>
+          </div>
+          <div class="text-xs text-slate-500 bg-slate-50 rounded p-3">
+            💡 計算順序：小計 → 先扣百分比 → 再扣固定金額 → 最後加稅
+          </div>
+        </div>
+      </div>
+
+      <!-- 報價條款 -->
+      <div id="sec-terms" class="anchor-target section-card">
+        <div class="section-title">📜 報價條款（可勾選啟用顯示於報價單）</div>
+        <div class="p-5 space-y-4">
+
+          <!-- 有效期限 -->
+          <div class="flex items-start gap-3">
+            <input type="checkbox" v-model="terms.validUntil.enabled" class="mt-1.5">
+            <div class="flex-1" :class="!terms.validUntil.enabled && 'opacity-40'">
+              <label class="field-label">📅 報價有效期限</label>
+              <input v-model="quote.validUntil" :disabled="!terms.validUntil.enabled" type="date" class="input-base">
+            </div>
+          </div>
+
+          <!-- 訂金尾款 -->
+          <div class="flex items-start gap-3">
+            <input type="checkbox" v-model="terms.payment.enabled" class="mt-1.5">
+            <div class="flex-1 space-y-2" :class="!terms.payment.enabled && 'opacity-40'">
+              <label class="field-label">💰 訂金 / 尾款</label>
+              <div class="flex gap-2">
+                <select v-model="terms.payment.mode" :disabled="!terms.payment.enabled" class="input-base flex-1">
+                  <option value="pct">按總額百分比</option>
+                  <option value="amt">自訂金額</option>
+                </select>
+                <input v-if="terms.payment.mode === 'pct'"
+                  v-model.number="terms.payment.depositPct" :disabled="!terms.payment.enabled"
+                  type="number" min="0" max="100" class="input-base w-32" placeholder="訂金 %">
+                <input v-else
+                  v-model.number="terms.payment.depositAmt" :disabled="!terms.payment.enabled"
+                  type="number" min="0" class="input-base w-40" placeholder="訂金金額">
+              </div>
+              <textarea v-model="terms.payment.text" :disabled="!terms.payment.enabled" rows="2" class="input-base resize-none text-xs"
+                placeholder="付款條件說明，例：簽約後付訂金 30%，拍攝當天付 50%，交件付清 20%"></textarea>
+            </div>
+          </div>
+
+          <!-- 取消改期條款 -->
+          <div class="flex items-start gap-3">
+            <input type="checkbox" v-model="terms.cancellation.enabled" class="mt-1.5">
+            <div class="flex-1" :class="!terms.cancellation.enabled && 'opacity-40'">
+              <label class="field-label">🚫 取消 / 改期條款</label>
+              <select @change="applyCancelTemplate($event.target.value)" :disabled="!terms.cancellation.enabled" class="input-base mb-2">
+                <option value="">套用範本...</option>
+                <option value="strict">嚴格版（30天前可全額退）</option>
+                <option value="standard">標準版（14天前可退50%）</option>
+                <option value="flexible">寬鬆版（7天前可退70%）</option>
+              </select>
+              <textarea v-model="terms.cancellation.text" :disabled="!terms.cancellation.enabled" rows="3" class="input-base resize-none text-xs"
+                placeholder="拍攝前 30 天取消退 100%；14 天前退 50%；7 天內取消恕不退費。改期需提前 7 天通知。"></textarea>
+            </div>
+          </div>
+
+          <!-- 授權 -->
+          <div class="flex items-start gap-3">
+            <input type="checkbox" v-model="terms.license.enabled" class="mt-1.5">
+            <div class="flex-1 space-y-2" :class="!terms.license.enabled && 'opacity-40'">
+              <label class="field-label">©️ 照片使用授權</label>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" v-model="terms.license.personalUse" :disabled="!terms.license.enabled">
+                  客戶可作個人使用
+                </label>
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" v-model="terms.license.commercialUse" :disabled="!terms.license.enabled">
+                  客戶可作商業使用（加價）
+                </label>
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" v-model="terms.license.portfolioUse" :disabled="!terms.license.enabled">
+                  攝影師可作為作品集
+                </label>
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" v-model="terms.license.rawProvided" :disabled="!terms.license.enabled">
+                  提供未修原檔
+                </label>
+              </div>
+              <textarea v-model="terms.license.text" :disabled="!terms.license.enabled" rows="2" class="input-base resize-none text-xs"
+                placeholder="補充授權說明..."></textarea>
+            </div>
+          </div>
+
+          <!-- 稅金 / 發票 -->
+          <div class="flex items-start gap-3">
+            <input type="checkbox" v-model="terms.tax.enabled" class="mt-1.5">
+            <div class="flex-1 space-y-2" :class="!terms.tax.enabled && 'opacity-40'">
+              <label class="field-label">🧾 稅金與發票</label>
+              <div class="grid grid-cols-2 gap-2">
+                <select v-model="terms.tax.type" :disabled="!terms.tax.enabled" class="input-base">
+                  <option value="exclusive">未稅</option>
+                  <option value="inclusive">含稅 5%</option>
+                </select>
+                <select v-model="terms.tax.invoice" :disabled="!terms.tax.enabled" class="input-base">
+                  <option value="二聯式">二聯式發票</option>
+                  <option value="三聯式">三聯式發票（需統編）</option>
+                  <option value="收據">收據</option>
+                </select>
+              </div>
+              <p v-if="terms.tax.type === 'inclusive' && terms.tax.invoice === '三聯式' && !client.taxId"
+                 class="text-xs text-amber-600">⚠️ 已選三聯式，請於客戶資訊填寫統一編號</p>
+            </div>
+          </div>
+
+          <!-- 簽名欄 -->
+          <div class="flex items-start gap-3">
+            <input type="checkbox" v-model="terms.signature.enabled" class="mt-1.5">
+            <div class="flex-1" :class="!terms.signature.enabled && 'opacity-40'">
+              <label class="field-label">✍️ 顯示客戶簽名 / 公司簽章欄</label>
+              <p class="text-xs text-slate-500">啟用後 PDF 底部將顯示雙方簽名/簽章區塊</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 交件資訊 -->
+      <div id="sec-delivery" class="anchor-target section-card">
+        <div class="section-title">📦 交件資訊</div>
+        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="field-label">交件時間</label>
+            <input v-model="delivery.time" class="input-base" placeholder="例：拍攝後 14 個工作天">
+          </div>
+          <div>
+            <label class="field-label">交件方式</label>
+            <input v-model="delivery.method" class="input-base" placeholder="雲端連結 / Google Drive / 自訂">
+          </div>
+          <div class="md:col-span-2">
+            <label class="field-label">是否需來店挑片</label>
+            <div class="flex gap-4 mt-1">
+              <label class="flex items-center gap-2"><input type="radio" v-model="delivery.needSelect" :value="true">是</label>
+              <label class="flex items-center gap-2"><input type="radio" v-model="delivery.needSelect" :value="false">否</label>
+            </div>
+          </div>
+          <div v-if="delivery.needSelect" class="md:col-span-2">
+            <label class="field-label">挑片相關備註</label>
+            <textarea v-model="delivery.selectNote" rows="2" class="input-base resize-none" placeholder="挑片地點、預約方式、所需時間..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 範本庫 -->
+      <div class="section-card">
+        <div class="section-title">
+          📚 拍攝方案範本庫
+          <button @click="saveTemplate()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">💾 儲存目前方案為範本</button>
+        </div>
+        <div class="p-5">
+          <div v-if="templates.length === 0" class="text-center text-sm text-slate-400 py-3">尚無範本</div>
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div v-for="(t, i) in templates" :key="i"
+                 class="flex items-center justify-between bg-slate-50 rounded-lg p-3 border border-slate-200">
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-slate-700 truncate">{{ t.name }}</div>
+                <div class="text-xs text-slate-400">{{ t.savedAt }}</div>
+              </div>
+              <div class="flex gap-2 shrink-0">
+                <button @click="applyTemplate(t)" class="text-xs text-blue-600 hover:text-blue-800">套用</button>
+                <button @click="templates.splice(i, 1); saveTemplates();" class="text-xs text-red-400 hover:text-red-600">✕</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── Quotation Document (Preview / PDF) ── -->
+    <div id="sec-preview" class="anchor-target mt-6">
+      <div id="quote-document" class="quote-page">
+
+        <!-- Header -->
+        <div class="flex justify-between items-start mb-7">
+          <div>
+            <img v-if="company.logo" :src="company.logo" class="h-12 object-contain mb-2">
+            <div class="text-base font-bold text-slate-800">{{ company.name || '公司名稱' }}</div>
+            <div class="text-xs text-slate-500 mt-0.5">{{ company.address }}</div>
+            <div class="text-xs text-slate-500">{{ company.phone }}{{ company.phone && company.email ? '　|　' : '' }}{{ company.email }}</div>
+            <div v-if="company.taxId" class="text-xs text-slate-500">統一編號：{{ company.taxId }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-2xl font-bold tracking-wide" style="color:#1a3560;">形象寫真報價單</div>
+            <div class="text-xs font-semibold mt-1 tracking-wide" :style="docMode === 'detail' ? 'color:#3b6bc7;' : 'color:#94a3b8;'">
+              ▎{{ docMode === 'detail' ? '詳細版 · Detail Edition' : '簡潔版 · Simple Edition' }}
+            </div>
+            <div class="mt-2 text-xs text-slate-500 space-y-0.5">
+              <div class="flex justify-end gap-3">
+                <span class="text-slate-400">報價單編號</span>
+                <span class="font-mono font-medium text-slate-700">{{ quote.number }}</span>
+              </div>
+              <div class="flex justify-end gap-3">
+                <span class="text-slate-400">報價日期</span>
+                <span>{{ quote.date }}</span>
+              </div>
+              <div v-if="terms.validUntil.enabled" class="flex justify-end gap-3">
+                <span class="text-slate-400">有效期限</span>
+                <span>{{ quote.validUntil }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="height:2px;background:linear-gradient(to right,#1a3560,#3b6bc7,transparent);" class="mb-5"></div>
+
+        <!-- Client -->
+        <div class="bg-slate-50 rounded-lg p-4 mb-5 border border-slate-200">
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">客戶資訊</div>
+          <div class="grid grid-cols-2 gap-x-10 gap-y-1.5 text-sm">
+            <div class="flex gap-2"><span class="text-slate-400 w-16">姓名/公司</span><span class="text-slate-700">{{ client.name || '—' }}</span></div>
+            <div class="flex gap-2"><span class="text-slate-400 w-16">聯絡人</span><span class="text-slate-700">{{ client.contact || '—' }}</span></div>
+            <div class="flex gap-2"><span class="text-slate-400 w-16">電話</span><span class="text-slate-700">{{ client.phone || '—' }}</span></div>
+            <div class="flex gap-2"><span class="text-slate-400 w-16">Email</span><span class="text-slate-700">{{ client.email || '—' }}</span></div>
+            <div v-if="client.taxId" class="flex gap-2"><span class="text-slate-400 w-16">統一編號</span><span class="text-slate-700">{{ client.taxId }}</span></div>
+            <div class="flex gap-2"><span class="text-slate-400 w-16">拍攝日期</span><span class="text-slate-700">{{ client.shootDate || '待確認' }}</span></div>
+          </div>
+        </div>
+
+        <!-- Shoot Info Block -->
+        <div v-if="shootSummary.length > 0" class="mb-5 q-row">
+          <div class="text-xs font-bold tracking-widest mb-2" style="color:#1a3560;">📷 拍攝服務內容</div>
+          <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm bg-blue-50/40 rounded-lg p-4 border border-blue-100">
+            <div v-for="(s, i) in shootSummary" :key="i" class="flex gap-2">
+              <span class="text-slate-500 w-20 shrink-0">{{ s.label }}</span>
+              <span class="text-slate-700">{{ s.value }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Products -->
+        <div v-if="enabledProducts.length > 0" class="mb-5">
+          <div class="text-xs font-bold tracking-widest mb-2" style="color:#1a3560;">💎 主要產品</div>
+          <div class="grid text-xs font-semibold text-white px-3 py-2 rounded-t-lg"
+               style="background:#1a3560; grid-template-columns: 2fr 60px 60px 100px 110px 1.5fr;">
+            <span>項目</span><span class="text-center">數量</span><span class="text-center">單位</span>
+            <span class="text-right">單價</span><span class="text-right">金額</span><span class="pl-3">備註</span>
+          </div>
+          <div v-for="(p, i) in enabledProducts" :key="i"
+               class="q-row grid items-center px-3 py-2 border-x border-b border-slate-200 text-sm bg-white"
+               style="grid-template-columns: 2fr 60px 60px 100px 110px 1.5fr;">
+            <span class="text-slate-700">{{ p.name }}</span>
+            <span class="text-center">{{ p.qty }}</span>
+            <span class="text-center text-slate-500">{{ p.unit }}</span>
+            <span class="text-right">{{ fmt(p.price) }}</span>
+            <span class="text-right font-semibold">NT$ {{ fmt(productTotal(p)) }}</span>
+            <span class="pl-3 text-xs text-slate-500">{{ p.note }}</span>
+          </div>
+        </div>
+
+        <!-- Addons -->
+        <div v-if="enabledAddons.length > 0" class="mb-5">
+          <div class="text-xs font-bold tracking-widest mb-2" style="color:#92400e;">➕ 加購項目</div>
+          <div class="grid text-xs font-semibold text-white px-3 py-2 rounded-t-lg"
+               style="background:#92400e; grid-template-columns: 2fr 60px 60px 100px 110px 1.5fr;">
+            <span>項目</span><span class="text-center">數量</span><span class="text-center">單位</span>
+            <span class="text-right">單價</span><span class="text-right">金額</span><span class="pl-3">備註</span>
+          </div>
+          <div v-for="(a, i) in enabledAddons" :key="i"
+               class="q-row grid items-center px-3 py-2 border-x border-b border-slate-200 text-sm bg-amber-50/30"
+               style="grid-template-columns: 2fr 60px 60px 100px 110px 1.5fr;">
+            <span class="text-slate-700">{{ a.name }}</span>
+            <span class="text-center">{{ a.qty }}</span>
+            <span class="text-center text-slate-500">{{ a.unit }}</span>
+            <span class="text-right">{{ fmt(a.price) }}</span>
+            <span class="text-right font-semibold">NT$ {{ fmt(productTotal(a)) }}</span>
+            <span class="pl-3 text-xs text-slate-500">{{ a.note }}</span>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="q-row flex justify-end mb-6">
+          <div class="w-80 border border-slate-200 rounded-lg overflow-hidden">
+            <div class="flex justify-between px-4 py-2 text-sm border-b border-slate-100">
+              <span class="text-slate-500">小計</span>
+              <span class="font-medium">NT$ {{ fmt(subtotal) }}</span>
+            </div>
+            <div v-if="discount.pctEnabled && discount.pct > 0"
+                 class="flex justify-between px-4 py-2 text-sm border-b border-slate-100">
+              <span class="text-slate-500">百分比折扣 ({{ discount.pct }}%){{ activeGroup ? '・' + activeGroup : '' }}</span>
+              <span class="text-red-500">- NT$ {{ fmt(pctDiscountAmount) }}</span>
+            </div>
+            <div v-if="discount.amtEnabled && discount.amt > 0"
+                 class="flex justify-between px-4 py-2 text-sm border-b border-slate-100">
+              <span class="text-slate-500">手動折扣</span>
+              <span class="text-red-500">- NT$ {{ fmt(discount.amt) }}</span>
+            </div>
+            <div v-if="terms.tax.enabled && terms.tax.type === 'inclusive'"
+                 class="flex justify-between px-4 py-2 text-sm border-b border-slate-100">
+              <span class="text-slate-500">營業稅 (5%)</span>
+              <span>NT$ {{ fmt(taxAmount) }}</span>
+            </div>
+            <div class="flex justify-between px-4 py-3 items-center" style="background:#1a3560;">
+              <span class="text-sm font-bold text-white">總計金額</span>
+              <span class="text-lg font-bold text-white">NT$ {{ fmt(grandTotal) }}</span>
+            </div>
+            <div v-if="terms.payment.enabled" class="px-4 py-2 bg-slate-50 text-xs text-slate-600 space-y-0.5">
+              <div class="flex justify-between"><span>訂金</span><span class="font-medium">NT$ {{ fmt(depositAmount) }}</span></div>
+              <div class="flex justify-between"><span>尾款</span><span class="font-medium">NT$ {{ fmt(grandTotal - depositAmount) }}</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Delivery -->
+        <div v-if="delivery.time || delivery.method || delivery.needSelect" class="mb-5 q-row">
+          <div class="text-xs font-bold tracking-widest mb-2" style="color:#1a3560;">📦 交件資訊</div>
+          <div class="bg-slate-50 rounded-lg p-4 border border-slate-200 text-sm space-y-1">
+            <div v-if="delivery.time"><span class="text-slate-500">交件時間：</span>{{ delivery.time }}</div>
+            <div v-if="delivery.method"><span class="text-slate-500">交件方式：</span>{{ delivery.method }}</div>
+            <div><span class="text-slate-500">挑片：</span>{{ delivery.needSelect ? '需來店挑片' : '無需來店挑片' }}</div>
+            <div v-if="delivery.needSelect && delivery.selectNote" class="text-xs text-slate-500 whitespace-pre-wrap">{{ delivery.selectNote }}</div>
+          </div>
+        </div>
+
+        <!-- Terms (詳細版才完整顯示) -->
+        <div class="border-t border-slate-200 pt-4 mb-4 space-y-3 text-xs text-slate-600 leading-relaxed q-row">
+
+          <div v-if="terms.payment.enabled && terms.payment.text">
+            <div class="font-bold text-slate-700 mb-1">💰 付款條件</div>
+            <p class="whitespace-pre-wrap">{{ terms.payment.text }}</p>
+          </div>
+
+          <template v-if="docMode === 'detail'">
+            <div v-if="terms.cancellation.enabled && terms.cancellation.text">
+              <div class="font-bold text-slate-700 mb-1">🚫 取消 / 改期條款</div>
+              <p class="whitespace-pre-wrap">{{ terms.cancellation.text }}</p>
+            </div>
+
+            <div v-if="terms.license.enabled">
+              <div class="font-bold text-slate-700 mb-1">©️ 照片使用授權</div>
+              <ul class="list-disc list-inside space-y-0.5">
+                <li v-if="terms.license.personalUse">客戶可作個人使用</li>
+                <li v-if="terms.license.commercialUse">客戶可作商業使用</li>
+                <li v-if="terms.license.portfolioUse">攝影師可將作品用於作品集／宣傳</li>
+                <li v-if="terms.license.rawProvided">本方案提供未修原檔</li>
+                <li v-else class="text-red-500">本方案不含未修原檔</li>
+              </ul>
+              <p v-if="terms.license.text" class="whitespace-pre-wrap mt-1">{{ terms.license.text }}</p>
+            </div>
+          </template>
+
+          <div v-if="terms.tax.enabled">
+            <span class="font-bold text-slate-700">🧾 稅金與發票：</span>
+            {{ terms.tax.type === 'inclusive' ? '本報價含 5% 營業稅' : '本報價未稅，如需發票另行加計 5%' }}・{{ terms.tax.invoice }}
+          </div>
+
+          <div v-if="terms.validUntil.enabled">
+            <span class="font-bold text-slate-700">📅 報價有效期限：</span>本報價單至 {{ quote.validUntil }} 為止，逾期請重新詢價。
+          </div>
+        </div>
+
+        <!-- Signature -->
+        <div v-if="terms.signature.enabled" class="grid grid-cols-2 gap-8 mt-8 q-row">
+          <div class="border-t-2 border-slate-300 pt-2">
+            <div class="text-xs text-slate-500">客戶簽名 Client Signature</div>
+            <div class="h-16"></div>
+            <div class="text-xs text-slate-400">日期：____________________</div>
+          </div>
+          <div class="border-t-2 border-slate-300 pt-2">
+            <div class="text-xs text-slate-500">公司簽章 Company Stamp</div>
+            <div class="h-16"></div>
+            <div class="text-xs text-slate-400">日期：____________________</div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-8 pt-4 border-t border-slate-200 flex justify-between text-xs text-slate-400">
+          <span>{{ company.name }}</span>
+          <span>{{ quote.number }}</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 歷史報價面板 -->
+  <transition name="slide-panel">
+    <div v-if="showHistory" class="no-print fixed inset-0 z-40 flex justify-end">
+      <div class="absolute inset-0 bg-black/30" @click="showHistory = false"></div>
+      <div class="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50">
+          <span class="font-semibold text-slate-700">📋 歷史報價單</span>
+          <button @click="showHistory = false" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+        </div>
+        <div v-if="historyLoading" class="flex-1 flex items-center justify-center text-slate-400 text-sm">載入中…</div>
+        <div v-else-if="historyList.length === 0" class="flex-1 flex flex-col items-center justify-center text-slate-400 gap-2">
+          <span class="text-3xl">🗂</span><span class="text-sm">尚無歸檔記錄</span>
+        </div>
+        <div v-else class="flex-1 overflow-y-auto divide-y divide-slate-100">
+          <button v-for="q in historyList" :key="q.fileId" @click="loadFromCloud(q.fileId)"
+            class="w-full text-left px-5 py-4 hover:bg-violet-50 group">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-slate-700 group-hover:text-violet-700 truncate">{{ q.clientName || '（未填客戶）' }}</div>
+                <div class="text-xs text-slate-500 truncate mt-0.5">{{ q.shootDate || '—' }}</div>
+              </div>
+              <div class="text-right flex-shrink-0">
+                <div class="text-xs font-mono text-slate-400">{{ q.quoteNumber }}</div>
+                <div class="text-xs text-slate-500 mt-0.5">NT$ {{ Number(q.total).toLocaleString() }}</div>
+              </div>
+            </div>
+            <div class="text-xs text-slate-400 mt-1">{{ q.quoteDate }} · {{ q.statusLabel || '' }}</div>
+          </button>
+        </div>
+        <div class="px-5 py-3 border-t border-slate-100 text-xs text-slate-400 text-center">顯示最近 50 筆・點選即可載入</div>
+      </div>
+    </div>
+  </transition>
+
+  <transition name="fade">
+    <div v-if="toast.show" class="no-print fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-xl text-sm text-white font-medium z-50"
+      :class="toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500'">
+      {{ toast.message }}
+    </div>
+  </transition>
+</div>
+
+<script>
+const { createApp } = Vue
+
+createApp({
+  data() {
+    const today = new Date()
+    const valid = new Date(today); valid.setDate(valid.getDate() + 14)
+    return {
+      previewMode: false,
+      docMode: 'simple',
+      archiving: false,
+      showHistory: false,
+      historyLoading: false,
+      historyList: [],
+      showClientDropdown: false,
+      clientFilter: '',
+      addonPreset: '',
+      toast: { show: false, type: 'success', message: '' },
+
+      settings: {
+        scriptUrl: '',
+        quotePrefix: 'PT'
+      },
+
+      schemaVersion: 1,
+
+      company: {
+        name: '',
+        taxId: '',
+        address: '',
+        phone: '',
+        email: '',
+        logo: ''
+      },
+
+      quote: {
+        number: '',
+        date: today.toISOString().split('T')[0],
+        validUntil: valid.toISOString().split('T')[0],
+        status: 'draft'
+      },
+
+      client: { name: '', contact: '', phone: '', email: '', taxId: '', shootDate: '', note: '' },
+
+      clientHistory: [],
+
+      // 拍攝服務（可勾選啟用）
+      shoot: {
+        time:        { enabled: true,  value: '' },
+        outfits:     { enabled: true,  value: '' },
+        makeup:      { enabled: true,  type: 'included' },
+        clothing:    { enabled: true,  type: 'included', count: '' },
+        dress:       { enabled: false, value: '' },
+        location:    { enabled: true,  type: 'studio', detail: '' },
+        style:       { enabled: true,  value: '' },
+        photographer:{ enabled: false, value: '' },
+        weekday:     { enabled: false, type: 'weekday' }
+      },
+
+      // 主要產品
+      products: [
+        { enabled: true,  name: '精修電子檔', qty: 10, unit: '張', price: 0, note: '雲端交件' }
+      ],
+
+      // 加購項目
+      addons: [],
+
+      addonPresets: [
+        { name: '加購精修照片', unit: '張', defaultQty: 1, price: 500 },
+        { name: '加購拍攝套數', unit: '套', defaultQty: 1, price: 1500 },
+        { name: '加購禮服',     unit: '套', defaultQty: 1, price: 2000 },
+        { name: '加購妝髮',     unit: '式', defaultQty: 1, price: 2500 },
+        { name: '加長拍攝時間', unit: '小時', defaultQty: 1, price: 1500 },
+        { name: '檔案全贈（不含精修）', unit: '式', defaultQty: 1, price: 5000 },
+        { name: '全贈後加精修', unit: '張', defaultQty: 1, price: 500 },
+        { name: '加洗實體照片 4×6',  unit: '張', defaultQty: 10, price: 30 },
+        { name: '加洗實體照片 8×10', unit: '張', defaultQty: 5, price: 100 },
+        { name: '加洗放大裱框', unit: '張', defaultQty: 1, price: 800 },
+        { name: '相本 / 寫真書', unit: '本', defaultQty: 1, price: 3500 },
+        { name: '未修原檔', unit: '式', defaultQty: 1, price: 2000 }
+      ],
+
+      // 折扣
+      discount: {
+        group: '',
+        customGroup: '',
+        pctEnabled: false,
+        pct: 0,
+        amtEnabled: false,
+        amt: 0
+      },
+
+      // 條款
+      terms: {
+        validUntil:   { enabled: true },
+        payment:      { enabled: true, mode: 'pct', depositPct: 30, depositAmt: 0, text: '簽約後付訂金 30%，拍攝當天付款 50%，交件付清 20%。' },
+        cancellation: { enabled: true, text: '拍攝前 30 天取消可全額退費；14 天前取消退 50%；7 天內取消恕不退費。改期需提前 7 天通知，限改期一次。' },
+        license: {
+          enabled: true,
+          personalUse: true,
+          commercialUse: false,
+          portfolioUse: true,
+          rawProvided: false,
+          text: ''
+        },
+        tax:       { enabled: true, type: 'exclusive', invoice: '二聯式' },
+        signature: { enabled: true }
+      },
+
+      // 交件
+      delivery: {
+        time: '拍攝後 14 個工作天',
+        method: '雲端連結（Google Drive）',
+        needSelect: false,
+        selectNote: ''
+      },
+
+      templates: []
+    }
+  },
+
+  computed: {
+    activeGroup() {
+      if (this.discount.group === 'custom') return this.discount.customGroup || ''
+      return this.discount.group || ''
+    },
+
+    enabledProducts() { return this.products.filter(p => p.enabled) },
+    enabledAddons()   { return this.addons.filter(a => a.enabled && !this.addonHidden(a)) },
+
+    hasFullGift() {
+      return this.addons.some(a => a.enabled && a.name && a.name.includes('全贈') && !a.name.includes('全贈後'))
+    },
+
+    productSubtotal() { return this.enabledProducts.reduce((s, p) => s + this.productTotal(p), 0) },
+    addonSubtotal()   { return this.enabledAddons.reduce((s, a) => s + this.productTotal(a), 0) },
+
+    subtotal() { return this.productSubtotal + this.addonSubtotal },
+
+    pctDiscountAmount() {
+      if (!this.discount.pctEnabled || !this.discount.pct) return 0
+      return Math.round(this.subtotal * (Number(this.discount.pct) / 100))
+    },
+
+    afterDiscount() {
+      let v = this.subtotal - this.pctDiscountAmount
+      if (this.discount.amtEnabled) v -= Number(this.discount.amt) || 0
+      return Math.max(0, v)
+    },
+
+    taxAmount() {
+      if (!this.terms.tax.enabled || this.terms.tax.type !== 'inclusive') return 0
+      return Math.round(this.afterDiscount * 0.05)
+    },
+
+    grandTotal() {
+      return this.afterDiscount + this.taxAmount
+    },
+
+    depositAmount() {
+      if (!this.terms.payment.enabled) return 0
+      if (this.terms.payment.mode === 'pct') {
+        return Math.round(this.grandTotal * (Number(this.terms.payment.depositPct) || 0) / 100)
+      }
+      return Number(this.terms.payment.depositAmt) || 0
+    },
+
+    shootSummary() {
+      const s = this.shoot
+      const out = []
+      if (s.time.enabled && s.time.value) out.push({ label: '拍攝時間', value: s.time.value })
+      if (s.outfits.enabled && s.outfits.value) out.push({ label: '拍攝套數', value: s.outfits.value })
+      if (s.style.enabled && s.style.value) out.push({ label: '拍攝風格', value: s.style.value })
+      if (s.makeup.enabled) {
+        const m = { included: '基本方案內含', addon: '加購項目', none: '無' }
+        out.push({ label: '妝髮造型', value: m[s.makeup.type] })
+      }
+      if (s.clothing.enabled) {
+        let v = s.clothing.type === 'self' ? '服裝自備' : '包含服裝'
+        if (s.clothing.type === 'included' && s.clothing.count) v += `（${s.clothing.count}）`
+        out.push({ label: '服裝', value: v })
+      }
+      if (s.dress.enabled && s.dress.value && !(s.clothing.enabled && s.clothing.type === 'self')) {
+        out.push({ label: '禮服', value: s.dress.value })
+      }
+      if (s.location.enabled) {
+        const m = { studio: '棚拍', outdoor: '外拍', custom: '客戶指定' }
+        let v = m[s.location.type]
+        if (s.location.type !== 'studio' && s.location.detail) v += `（${s.location.detail}）`
+        out.push({ label: '拍攝地點', value: v })
+      }
+      if (s.photographer.enabled && s.photographer.value) out.push({ label: '攝影師', value: s.photographer.value })
+      if (s.weekday.enabled) out.push({ label: '日期類型', value: s.weekday.type === 'weekend' ? '假日（加價）' : '平日' })
+      return out
+    },
+
+    filteredClients() {
+      const q = this.clientFilter.toLowerCase()
+      return this.clientHistory.filter(c => (c.name || '').toLowerCase().includes(q))
+    }
+  },
+
+  methods: {
+    fmt(n) { return (Math.round(n) || 0).toLocaleString('zh-TW') },
+
+    productTotal(p) {
+      if (!p.enabled) return 0
+      return Math.round((Number(p.qty) || 0) * (Number(p.price) || 0))
+    },
+
+    // 連動隱藏：妝髮選「內含」時加購妝髮自動隱藏；服裝自備時加購禮服自動隱藏
+    addonHidden(a) {
+      if (!a.name) return false
+      if (a.name.includes('加購妝髮') && this.shoot.makeup.enabled && this.shoot.makeup.type === 'included') return true
+      if (a.name.includes('加購禮服') && this.shoot.clothing.enabled && this.shoot.clothing.type === 'self') return true
+      if (a.name.includes('全贈後') && !this.hasFullGift) return true
+      return false
+    },
+
+    addProduct() {
+      this.products.push({ enabled: true, name: '新項目', qty: 1, unit: '張', price: 0, note: '' })
+    },
+
+    addAddon() {
+      this.addons.push({ enabled: true, name: '自訂加購', qty: 1, unit: '式', price: 0, note: '' })
+    },
+
+    addAddonFromPreset() {
+      if (!this.addonPreset) return
+      const p = this.addonPresets.find(x => x.name === this.addonPreset)
+      if (p) this.addons.push({ enabled: true, name: p.name, qty: p.defaultQty, unit: p.unit, price: p.price, note: '' })
+      this.addonPreset = ''
+    },
+
+    applyCancelTemplate(v) {
+      const tpl = {
+        strict:   '拍攝前 30 天取消可全額退費；30 天內取消恕不退費。改期需提前 14 天通知。',
+        standard: '拍攝前 14 天取消可退 50%；7 天內取消恕不退費。改期需提前 7 天通知，限改期一次。',
+        flexible: '拍攝前 7 天取消可退 70%；3 天內取消恕不退費。改期需提前 3 天通知。'
+      }
+      if (tpl[v]) this.terms.cancellation.text = tpl[v]
+    },
+
+    uploadLogo(e) {
+      const f = e.target.files[0]; if (!f) return
+      const r = new FileReader()
+      r.onload = ev => { this.company.logo = ev.target.result }
+      r.readAsDataURL(f)
+    },
+
+    genNumber() {
+      const d = new Date(), p = n => String(n).padStart(2, '0')
+      const prefix = this.settings.quotePrefix || 'PT'
+      return `${prefix}-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${String(Math.floor(Math.random()*900)+100)}`
+    },
+
+    resetQuote() {
+      if (!confirm('產生新報價單？目前內容將被清除（公司設定保留）')) return
+      const t = new Date(), v = new Date(t); v.setDate(v.getDate()+14)
+      this.quote = { number: this.genNumber(), date: t.toISOString().split('T')[0], validUntil: v.toISOString().split('T')[0], status: 'draft' }
+      this.client = { name: '', contact: '', phone: '', email: '', taxId: '', shootDate: '', note: '' }
+      this.products = [{ enabled: true, name: '精修電子檔', qty: 10, unit: '張', price: 0, note: '雲端交件' }]
+      this.addons = []
+      this.discount = { group: '', customGroup: '', pctEnabled: false, pct: 0, amtEnabled: false, amt: 0 }
+    },
+
+    showToast(msg, type = 'success') {
+      this.toast = { show: true, type, message: msg }
+      setTimeout(() => { this.toast.show = false }, 4000)
+    },
+
+    statusLabel(s) {
+      return ({ draft:'草稿', sent:'已寄出', won:'已成交', lost:'已取消' })[s] || s
+    },
+
+    async downloadPDF() {
+      this.saveClientToHistory()
+      const wasPreview = this.previewMode
+      this.previewMode = true
+      await this.$nextTick()
+      window.scrollTo(0, 0)
+      const suffix = this.docMode === 'detail' ? '詳細版' : '簡潔版'
+      const fileName = `${this.quote.number}_${this.client.name || '報價單'}_${suffix}.pdf`
+      await html2pdf().set({
+        margin: 0, filename: fileName,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'], avoid: ['.q-row'] }
+      }).from(document.getElementById('quote-document')).save()
+      this.previewMode = wasPreview
+    },
+
+    async downloadJPG() {
+      this.saveClientToHistory()
+      const wasPreview = this.previewMode
+      this.previewMode = true
+      await this.$nextTick()
+      window.scrollTo(0, 0)
+      const el = document.getElementById('quote-document')
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, logging: false })
+      const link = document.createElement('a')
+      link.download = `${this.quote.number}_${this.client.name || '報價單'}.jpg`
+      link.href = canvas.toDataURL('image/jpeg', 0.92)
+      link.click()
+      this.previewMode = wasPreview
+      this.showToast('✅ JPG 已下載，可直接傳 LINE 給客戶')
+    },
+
+    saveSettings() {
+      localStorage.setItem('portraitQuoteSettings', JSON.stringify({
+        company: this.company, settings: this.settings
+      }))
+    },
+
+    saveClientToHistory() {
+      if (!this.client.name) return
+      const idx = this.clientHistory.findIndex(c => c.name === this.client.name)
+      const data = { name: this.client.name, contact: this.client.contact, phone: this.client.phone, email: this.client.email, taxId: this.client.taxId }
+      if (idx >= 0) this.clientHistory[idx] = data
+      else this.clientHistory.unshift(data)
+      localStorage.setItem('portraitClientHistory', JSON.stringify(this.clientHistory))
+    },
+
+    loadClient(c) {
+      Object.assign(this.client, c)
+      this.showClientDropdown = false
+      this.clientFilter = ''
+    },
+
+    deleteClientHistory(i) {
+      this.clientHistory.splice(i, 1)
+      localStorage.setItem('portraitClientHistory', JSON.stringify(this.clientHistory))
+    },
+
+    saveTemplate() {
+      const name = prompt('範本名稱：', `方案範本 ${this.templates.length + 1}`)
+      if (!name) return
+      this.templates.push({
+        name,
+        savedAt: new Date().toLocaleDateString('zh-TW'),
+        data: JSON.parse(JSON.stringify({
+          shoot: this.shoot,
+          products: this.products,
+          addons: this.addons,
+          delivery: this.delivery,
+          terms: this.terms
+        }))
+      })
+      this.saveTemplates()
+      this.showToast('✅ 範本已儲存')
+    },
+
+    applyTemplate(t) {
+      if (!confirm(`套用範本「${t.name}」？目前的拍攝服務、產品、加購、條款、交件資訊將被覆蓋（客戶資訊保留）`)) return
+      const d = JSON.parse(JSON.stringify(t.data))
+      this.shoot = d.shoot
+      this.products = d.products
+      this.addons = d.addons
+      this.delivery = d.delivery
+      this.terms = d.terms
+      this.showToast('✅ 範本已套用')
+    },
+
+    saveTemplates() {
+      localStorage.setItem('portraitQuoteTemplates', JSON.stringify(this.templates))
+    },
+
+    blobToBase64(blob) {
+      return new Promise(res => {
+        const r = new FileReader()
+        r.onload = e => res(e.target.result.split(',')[1])
+        r.readAsDataURL(blob)
+      })
+    },
+
+    captureViewHtml() {
+      const el = document.getElementById('quote-document')
+      if (!el) return ''
+      return `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>${this.quote.number} 報價單</title>
+<script src="https://cdn.tailwindcss.com"><\/script>
+<style>body{font-family:'Segoe UI','Noto Sans TC',sans-serif;background:#f1f5f9;padding:20px;margin:0}.quote-page{width:210mm;min-height:297mm;margin:0 auto;background:white;padding:16mm 18mm;box-shadow:0 2px 20px rgba(0,0,0,0.12)}@media print{body{background:white;padding:0}.quote-page{box-shadow:none;padding:10mm 14mm}}</style>
+</head><body>${el.outerHTML}</body></html>`
+    },
+
+    submitToScript(payload) {
+      const frameId = 'gs-archive-frame'
+      let iframe = document.getElementById(frameId)
+      if (!iframe) {
+        iframe = document.createElement('iframe')
+        iframe.id = frameId; iframe.name = frameId; iframe.style.display = 'none'
+        document.body.appendChild(iframe)
+      }
+      const form = document.createElement('form')
+      form.method = 'POST'; form.action = this.settings.scriptUrl; form.target = frameId
+      const input = document.createElement('input')
+      input.type = 'hidden'; input.name = 'payload'; input.value = payload
+      form.appendChild(input); document.body.appendChild(form)
+      form.submit(); document.body.removeChild(form)
+    },
+
+    async archiveToDrive() {
+      if (!this.settings.scriptUrl) { this.showToast('請先填入 Google Apps Script 網址', 'error'); return }
+      if (!this.client.name) { this.showToast('請先填入客戶名稱才能歸檔', 'error'); return }
+      this.saveClientToHistory()
+      this.archiving = true
+      const wasMode = this.docMode
+      const wasPreview = this.previewMode
+      try {
+        const opts = {
+          margin: 0, image: { type: 'jpeg', quality: 0.92 },
+          html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['css', 'legacy'], avoid: ['.q-row'] }
+        }
+        this.previewMode = true
+        window.scrollTo(0, 0)
+
+        this.docMode = 'simple'
+        await this.$nextTick()
+        const simpleBlob = await html2pdf().set(opts).from(document.getElementById('quote-document')).outputPdf('blob')
+        const simpleB64 = await this.blobToBase64(simpleBlob)
+        const simpleHtml = this.captureViewHtml()
+
+        this.docMode = 'detail'
+        await this.$nextTick()
+        const detailBlob = await html2pdf().set(opts).from(document.getElementById('quote-document')).outputPdf('blob')
+        const detailB64 = await this.blobToBase64(detailBlob)
+        const detailHtml = this.captureViewHtml()
+
+        const stateJson = JSON.stringify({
+          schemaVersion: this.schemaVersion,
+          savedAt: new Date().toISOString(),
+          quote: this.quote, client: this.client,
+          shoot: this.shoot, products: this.products, addons: this.addons,
+          discount: this.discount, terms: this.terms, delivery: this.delivery,
+          settings: { quotePrefix: this.settings.quotePrefix }
+        })
+
+        const baseFileName = `${this.quote.number}_${this.client.name}`.replace(/[\/\\:*?"<>|]/g, '_')
+
+        const payload = JSON.stringify({
+          quoteNumber: this.quote.number,
+          quoteDate: this.quote.date,
+          validUntil: this.quote.validUntil,
+          status: this.quote.status,
+          statusLabel: this.statusLabel(this.quote.status),
+          clientName: this.client.name,
+          clientPhone: this.client.phone || '',
+          clientEmail: this.client.email || '',
+          shootDate: this.client.shootDate || '',
+          discountGroup: this.activeGroup,
+          subtotal: this.subtotal,
+          discountTotal: this.pctDiscountAmount + (this.discount.amtEnabled ? this.discount.amt : 0),
+          tax: this.taxAmount,
+          total: this.grandTotal,
+          deposit: this.depositAmount,
+          simplePdfBase64: simpleB64,
+          detailPdfBase64: detailB64,
+          simpleHtml: simpleHtml,
+          detailHtml: detailHtml,
+          stateJson: stateJson,
+          baseFileName: baseFileName
+        })
+        this.submitToScript(payload)
+        this.showToast('✅ 已送出至 Google Drive，約 20 秒後請確認')
+      } catch (err) {
+        console.error(err)
+        this.showToast('歸檔失敗：' + (err.message || '請重試'), 'error')
+      }
+      this.docMode = wasMode
+      this.previewMode = wasPreview
+      this.archiving = false
+    },
+
+    async openHistory() {
+      if (!this.settings.scriptUrl) { this.showToast('請先填入 Apps Script 網址', 'error'); return }
+      this.showHistory = true
+      this.historyLoading = true
+      this.historyList = []
+      try {
+        const res = await fetch(this.settings.scriptUrl + '?action=list')
+        const data = await res.json()
+        if (!data.ok) throw new Error(data.error || '讀取失敗')
+        this.historyList = data.quotes || []
+      } catch (err) {
+        this.showToast('讀取歷史失敗：' + err.message, 'error')
+        this.showHistory = false
+      } finally {
+        this.historyLoading = false
+      }
+    },
+
+    async loadFromCloud(fileId) {
+      try {
+        const res = await fetch(this.settings.scriptUrl + '?action=load&fileId=' + encodeURIComponent(fileId))
+        const data = await res.json()
+        if (!data.ok || !data.state) throw new Error(data.error || '載入失敗')
+        this.applyState(data.state)
+        this.previewMode = false
+        this.showHistory = false
+        this.showToast('✅ 報價單載入成功')
+      } catch (err) {
+        this.showToast('載入失敗：' + err.message, 'error')
+      }
+    },
+
+    applyState(s) {
+      if (s.quote) Object.assign(this.quote, s.quote)
+      if (s.client) Object.assign(this.client, s.client)
+      if (s.shoot) this.shoot = s.shoot
+      if (s.products) this.products = s.products
+      if (s.addons) this.addons = s.addons
+      if (s.discount) Object.assign(this.discount, s.discount)
+      if (s.terms) this.terms = s.terms
+      if (s.delivery) Object.assign(this.delivery, s.delivery)
+    },
+
+    loadFromFile(e) {
+      const file = e.target.files[0]; if (!file) return
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        try {
+          const s = JSON.parse(ev.target.result)
+          if (!s.quote) { this.showToast('檔案格式不符', 'error'); return }
+          this.applyState(s)
+          this.previewMode = false
+          this.showToast('✅ 報價單載入成功')
+        } catch {
+          this.showToast('檔案讀取失敗', 'error')
+        }
+        e.target.value = ''
+      }
+      reader.readAsText(file)
+    }
+  },
+
+  mounted() {
+    if (!this.quote.number) this.quote.number = this.genNumber()
+    const saved = localStorage.getItem('portraitQuoteSettings')
+    if (saved) {
+      try {
+        const s = JSON.parse(saved)
+        if (s.company)  Object.assign(this.company, s.company)
+        if (s.settings) Object.assign(this.settings, s.settings)
+        if (!this.quote.number.startsWith(this.settings.quotePrefix)) {
+          this.quote.number = this.genNumber()
+        }
+      } catch {}
+    }
+    try {
+      const h = localStorage.getItem('portraitClientHistory')
+      if (h) this.clientHistory = JSON.parse(h)
+    } catch {}
+    try {
+      const t = localStorage.getItem('portraitQuoteTemplates')
+      if (t) this.templates = JSON.parse(t)
+    } catch {}
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.client-dropdown-wrap')) this.showClientDropdown = false
+    })
+  },
+
+  watch: {
+    company:                  { deep: true, handler() { this.saveSettings() } },
+    'settings.scriptUrl'()                  { this.saveSettings() },
+    'settings.quotePrefix'()                { this.saveSettings() }
+  }
+}).mount('#app')
+</script>
+</body>
+</html>
