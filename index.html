@@ -129,9 +129,11 @@
       <a href="#sec-client" class="pill-btn">👤 客戶</a>
       <a href="#sec-shoot" class="pill-btn">📷 拍攝服務</a>
       <a href="#sec-product" class="pill-btn">💎 產品內容</a>
+      <a href="#sec-announcement" class="pill-btn">📣 優惠告知</a>
       <a href="#sec-addon" class="pill-btn">➕ 加購項目</a>
       <a href="#sec-discount" class="pill-btn">🎁 優惠折扣</a>
       <a href="#sec-terms" class="pill-btn">📜 條款</a>
+      <a href="#sec-notes" class="pill-btn">📝 備註</a>
       <a href="#sec-delivery" class="pill-btn">📦 交件</a>
       <a href="#sec-preview" class="pill-btn">📄 預覽</a>
     </div>
@@ -416,6 +418,16 @@
         </div>
       </div>
 
+      <!-- 優惠族群告知 -->
+      <div id="sec-announcement" class="anchor-target section-card">
+        <div class="section-title">📣 優惠族群告知（顯示於加購項目上方，讓客戶知道有哪些可能優惠）</div>
+        <div class="p-5">
+          <textarea v-model="discountAnnouncement" rows="5" class="input-base resize-none"
+            placeholder="留空則不顯示。可列出你的特殊族群優惠，讓客戶看到後若符合可主動告知。"></textarea>
+          <p class="text-xs text-slate-400 mt-2">⚠️ 這只是「告知」性質，實際折扣金額仍要在下方「優惠折扣」區塊設定。</p>
+        </div>
+      </div>
+
       <!-- 加購項目 -->
       <div id="sec-addon" class="anchor-target section-card">
         <div class="section-title">
@@ -612,6 +624,15 @@
         </div>
       </div>
 
+      <!-- 備註說明 -->
+      <div id="sec-notes" class="anchor-target section-card">
+        <div class="section-title">📝 備註說明（會顯示在報價單上）</div>
+        <div class="p-5">
+          <textarea v-model="notes" rows="4" class="input-base resize-none"
+            placeholder="例：本報價含拍攝、化妝、後製。&#10;若需現場印出實體照片，請另行加購。&#10;報價如有疑問請聯繫我們。"></textarea>
+        </div>
+      </div>
+
       <!-- 交件資訊 -->
       <div id="sec-delivery" class="anchor-target section-card">
         <div class="section-title">📦 交件資訊</div>
@@ -679,7 +700,7 @@
           </div>
           <div class="text-right">
             <div class="text-2xl font-bold tracking-wide" style="color:#1a3560;">形象寫真報價單</div>
-            <div class="text-xs font-semibold mt-1 tracking-wide" :style="docMode === 'detail' ? 'color:#3b6bc7;' : 'color:#94a3b8;'">
+            <div v-if="!previewMode" class="no-print text-xs font-semibold mt-1 tracking-wide" :style="docMode === 'detail' ? 'color:#3b6bc7;' : 'color:#94a3b8;'">
               ▎{{ docMode === 'detail' ? '詳細版 · Detail Edition' : '簡潔版 · Simple Edition' }}
             </div>
             <div class="mt-2 text-xs text-slate-500 space-y-0.5">
@@ -745,6 +766,14 @@
           </div>
         </div>
 
+        <!-- 優惠族群告知（PDF / 預覽） -->
+        <div v-if="discountAnnouncement && discountAnnouncement.trim()" class="mb-5 q-row">
+          <div class="text-xs font-bold tracking-widest mb-2" style="color:#a16207;">📣 專屬優惠方案告知</div>
+          <div class="bg-amber-50 border-l-4 border-amber-400 rounded-r-lg p-4">
+            <p class="text-xs text-amber-900 whitespace-pre-wrap leading-relaxed">{{ discountAnnouncement }}</p>
+          </div>
+        </div>
+
         <!-- Addons -->
         <div v-if="enabledAddons.length > 0" class="mb-5">
           <div class="text-xs font-bold tracking-widest mb-2" style="color:#92400e;">➕ 加購項目</div>
@@ -795,6 +824,14 @@
               <div class="flex justify-between"><span>訂金</span><span class="font-medium">NT$ {{ fmt(depositAmount) }}</span></div>
               <div class="flex justify-between"><span>尾款</span><span class="font-medium">NT$ {{ fmt(grandTotal - depositAmount) }}</span></div>
             </div>
+          </div>
+        </div>
+
+        <!-- Notes（備註說明） -->
+        <div v-if="notes && notes.trim()" class="mb-5 q-row">
+          <div class="text-xs font-bold tracking-widest mb-2" style="color:#1a3560;">📝 備註說明</div>
+          <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{{ notes }}</p>
           </div>
         </div>
 
@@ -1040,6 +1077,12 @@ createApp({
         selectNote: ''
       },
 
+      // 備註說明（出現在 PDF）
+      notes: '',
+
+      // 優惠族群告知（出現在加購項目上方，讓客戶知道有哪些可能優惠）
+      discountAnnouncement: '本工作室提供下列優惠方案，若您符合資格請告知，我們將為您調整報價：\n• 老客戶回饋\n• 企業 / 團購專案\n• 銀髮族・親子優惠\n• 秘密群會友獨享方案',
+
       templates: []
     }
   },
@@ -1250,6 +1293,8 @@ createApp({
       this.products = [{ enabled: true, name: '精修電子檔', qty: 10, unit: '張', price: 0, note: '雲端交件' }]
       this.addons = []
       this.discount = { group: '', customGroup: '', pctEnabled: false, pct: 0, amtEnabled: false, amt: 0 }
+      this.notes = ''
+      // discountAnnouncement 是公司全域設定，不清空
     },
 
     showToast(msg, type = 'success') {
@@ -1297,7 +1342,8 @@ createApp({
 
     saveSettings() {
       localStorage.setItem('portraitQuoteSettings', JSON.stringify({
-        company: this.company, settings: this.settings
+        company: this.company, settings: this.settings,
+        discountAnnouncement: this.discountAnnouncement
       }))
     },
 
@@ -1445,6 +1491,8 @@ createApp({
           quote: this.quote, client: this.client,
           shoot: this.shoot, products: this.products, addons: this.addons,
           discount: this.discount, terms: this.terms, delivery: this.delivery,
+          notes: this.notes,
+          discountAnnouncement: this.discountAnnouncement,
           settings: { quotePrefix: this.settings.quotePrefix }
         })
 
@@ -1537,6 +1585,8 @@ createApp({
       if (s.discount) Object.assign(this.discount, s.discount)
       if (s.terms) this.terms = s.terms
       if (s.delivery) Object.assign(this.delivery, s.delivery)
+      if (s.notes !== undefined) this.notes = s.notes
+      if (s.discountAnnouncement !== undefined) this.discountAnnouncement = s.discountAnnouncement
     },
 
     loadFromFile(e) {
@@ -1577,6 +1627,7 @@ createApp({
             this.settings.currentUserId = this.settings.users[0].id
           }
         }
+        if (s.discountAnnouncement !== undefined) this.discountAnnouncement = s.discountAnnouncement
       } catch {}
     }
     this.quote.number = this.genNumber()
@@ -1597,7 +1648,8 @@ createApp({
   watch: {
     company:                  { deep: true, handler() { this.saveSettings() } },
     'settings.scriptUrl'()                  { this.saveSettings() },
-    'settings.quotePrefix'()                { this.saveSettings() }
+    'settings.quotePrefix'()                { this.saveSettings() },
+    discountAnnouncement()                  { this.saveSettings() }
   }
 }).mount('#app')
 </script>
