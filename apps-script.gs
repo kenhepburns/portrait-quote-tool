@@ -104,21 +104,25 @@ function handleList() {
     const ss = getOrCreateMasterSheet(root)
     const data = ss.getActiveSheet().getDataRange().getValues()
     const quotes = []
-    // 欄位索引：0歸檔時間 1編號 2狀態 3狀態文字 4客戶 5電話 6Email 7拍攝日 8報價日 9有效期 10族群 11小計 12折扣 13稅 14總額 15訂金 16簡潔PDF 17詳細PDF 18簡潔HTML 19詳細HTML 20JSON 21stateFileId 22資料夾
+    // 欄位索引：0歸檔時間 1編號 2建立者 3代碼 4最後編輯者 5最後編輯時間 6狀態 7狀態文字 8客戶 9電話 10Email 11拍攝日 12報價日 13有效期 14族群 15小計 16折扣 17稅 18總額 19訂金 20簡潔PDF 21詳細PDF 22簡潔HTML 23詳細HTML 24JSON 25stateFileId 26資料夾
     for (let i = data.length - 1; i >= 1; i--) {
       const r = data[i]
-      const fileId = r[21]
+      const fileId = r[25]
       if (!fileId) continue
       quotes.push({
-        archivedAt:  r[0],
-        quoteNumber: r[1],
-        status:      r[2],
-        statusLabel: r[3],
-        clientName:  r[4],
-        shootDate:   r[7],
-        quoteDate:   r[8],
-        total:       r[14],
-        fileId:      fileId
+        archivedAt:    r[0],
+        quoteNumber:   r[1],
+        creator:       r[2],
+        creatorCode:   r[3],
+        lastEditedBy:  r[4],
+        lastEditedAt:  r[5] ? (r[5] instanceof Date ? r[5].toISOString() : String(r[5])) : '',
+        status:        r[6],
+        statusLabel:   r[7],
+        clientName:    r[8],
+        shootDate:     r[11],
+        quoteDate:     r[12],
+        total:         r[18],
+        fileId:        fileId
       })
       if (quotes.length >= 50) break
     }
@@ -169,7 +173,9 @@ function initMasterSheet(ss) {
   const sheet = ss.getActiveSheet()
   sheet.setName('歸檔記錄')
   const headers = [
-    '歸檔時間', '報價單編號', '狀態', '狀態文字',
+    '歸檔時間', '報價單編號', '建立者', '使用者代碼',
+    '最後編輯者', '最後編輯時間',
+    '狀態', '狀態文字',
     '客戶姓名', '電話', 'Email', '拍攝日期',
     '報價日期', '有效期限', '優惠族群',
     '小計(NT$)', '折扣(NT$)', '稅(NT$)', '總計(NT$)', '訂金(NT$)',
@@ -184,7 +190,8 @@ function initMasterSheet(ss) {
     .setFontColor('white')
   sheet.setColumnWidth(1, 150)
   sheet.setColumnWidth(2, 140)
-  sheet.setColumnWidth(5, 160)
+  sheet.setColumnWidth(3, 100)
+  sheet.setColumnWidth(7, 160)
 }
 
 function extractFileId(url) {
@@ -199,6 +206,10 @@ function appendToMasterSheet(root, payload, out, clientFolder) {
   sheet.appendRow([
     new Date(),
     payload.quoteNumber || '',
+    payload.creator || '',
+    payload.creatorCode || '',
+    payload.lastEditedBy || '',
+    payload.lastEditedAt || '',
     payload.status || '',
     payload.statusLabel || '',
     payload.clientName || '',

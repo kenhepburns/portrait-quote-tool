@@ -67,6 +67,12 @@
           <option value="won">✅ 已成交</option>
           <option value="lost">❌ 已取消</option>
         </select>
+        <select v-model="settings.currentUserId" @change="onUserSwitch()"
+          class="text-xs border border-blue-300 rounded px-2 py-1 bg-blue-50 text-blue-700 font-medium">
+          <option v-for="u in settings.users" :key="u.id" :value="u.id">
+            👤 {{ u.name }}{{ u.code ? ' ('+u.code+')' : '' }}
+          </option>
+        </select>
       </div>
       <div class="flex gap-2 items-center flex-wrap">
         <button @click="previewMode = !previewMode"
@@ -178,6 +184,30 @@
             <label class="field-label">報價單編號前綴</label>
             <input v-model="settings.quotePrefix" class="input-base" placeholder="PT">
           </div>
+        </div>
+
+        <!-- 使用者管理 -->
+        <div class="px-5 pb-5">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-xs font-semibold text-slate-600">👥 使用者管理（用於區分報價單建立者）</label>
+            <button @click="addUser()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ 新增使用者</button>
+          </div>
+          <div class="space-y-1.5">
+            <div v-for="(u, i) in settings.users" :key="u.id"
+                 class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
+              <span class="text-xs px-2 py-0.5 rounded font-mono"
+                    :class="u.id === settings.currentUserId ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'">
+                {{ u.code || '—' }}
+              </span>
+              <span class="text-sm text-slate-700 flex-1">{{ u.name }}</span>
+              <span v-if="u.id === settings.currentUserId" class="text-xs text-blue-600 font-medium">⭐ 目前使用</span>
+              <button @click="editUser(u)" class="text-xs text-slate-400 hover:text-blue-600">編輯</button>
+              <button @click="removeUser(i)" class="text-xs text-slate-300 hover:text-red-400">✕</button>
+            </div>
+          </div>
+          <p class="text-xs text-slate-400 mt-2">
+            報價編號：<span class="font-mono">{{ settings.quotePrefix }}-YYYYMMDD-NNN</span>　·　使用者只作為內部識別標籤，不會出現在報價單上
+          </p>
         </div>
       </div>
 
@@ -866,7 +896,12 @@
                 <div class="text-xs text-slate-500 mt-0.5">NT$ {{ Number(q.total).toLocaleString() }}</div>
               </div>
             </div>
-            <div class="text-xs text-slate-400 mt-1">{{ q.quoteDate }} · {{ q.statusLabel || '' }}</div>
+            <div class="text-xs text-slate-400 mt-1 flex items-center gap-2">
+              <span>{{ q.quoteDate }}</span>
+              <span>·</span>
+              <span>{{ q.statusLabel || '' }}</span>
+              <span v-if="q.creator" class="ml-auto bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">👤 {{ q.creator }}</span>
+            </div>
           </button>
         </div>
         <div class="px-5 py-3 border-t border-slate-100 text-xs text-slate-400 text-center">顯示最近 50 筆・點選即可載入</div>
@@ -903,7 +938,9 @@ createApp({
 
       settings: {
         scriptUrl: '',
-        quotePrefix: 'PT'
+        quotePrefix: 'PT',
+        users: [{ id: 'default', name: '本人', code: '' }],
+        currentUserId: 'default'
       },
 
       schemaVersion: 1,
@@ -921,7 +958,11 @@ createApp({
         number: '',
         date: today.toISOString().split('T')[0],
         validUntil: valid.toISOString().split('T')[0],
-        status: 'draft'
+        status: 'draft',
+        creator: '',
+        creatorCode: '',
+        lastEditedBy: '',
+        lastEditedAt: ''
       },
 
       client: { name: '', contact: '', phone: '', email: '', taxId: '', shootDate: '', note: '' },
@@ -1007,6 +1048,10 @@ createApp({
     activeGroup() {
       if (this.discount.group === 'custom') return this.discount.customGroup || ''
       return this.discount.group || ''
+    },
+
+    currentUser() {
+      return this.settings.users.find(u => u.id === this.settings.currentUserId) || this.settings.users[0]
     },
 
     enabledProducts() { return this.products.filter(p => p.enabled) },
@@ -1138,10 +1183,69 @@ createApp({
       return `${prefix}-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${String(Math.floor(Math.random()*900)+100)}`
     },
 
+    syncCreator() {
+      const u = this.currentUser
+      if (u) {
+        this.quote.creator = u.name
+        this.quote.creatorCode = u.code
+      }
+    },
+
+    onUserSwitch() {
+      this.saveSettings()
+      this.syncCreator()
+      // 切換使用者時，若報價單還沒填內容（無客戶名）就重新產生編號
+      if (!this.client.name) {
+        this.quote.number = this.genNumber()
+      }
+    },
+
+    addUser() {
+      const name = prompt('使用者名稱：')
+      if (!name) return
+      const code = prompt('使用者代碼（1-2 字元，會出現在報價編號中，例：K、M、A1）：', '')
+      const id = 'u_' + Date.now()
+      this.settings.users.push({ id, name, code: (code || '').toUpperCase() })
+      this.settings.currentUserId = id
+      this.saveSettings()
+      this.syncCreator()
+      this.quote.number = this.genNumber()
+    },
+
+    editUser(u) {
+      const name = prompt('使用者名稱：', u.name)
+      if (!name) return
+      const code = prompt('使用者代碼：', u.code)
+      u.name = name
+      u.code = (code || '').toUpperCase()
+      this.saveSettings()
+      this.syncCreator()
+    },
+
+    removeUser(idx) {
+      if (this.settings.users.length <= 1) { this.showToast('至少保留一位使用者', 'error'); return }
+      const u = this.settings.users[idx]
+      if (!confirm(`刪除使用者「${u.name}」？歷史報價中已記錄的建立者不會受影響。`)) return
+      this.settings.users.splice(idx, 1)
+      if (this.settings.currentUserId === u.id) {
+        this.settings.currentUserId = this.settings.users[0].id
+        this.syncCreator()
+      }
+      this.saveSettings()
+    },
+
     resetQuote() {
       if (!confirm('產生新報價單？目前內容將被清除（公司設定保留）')) return
       const t = new Date(), v = new Date(t); v.setDate(v.getDate()+14)
-      this.quote = { number: this.genNumber(), date: t.toISOString().split('T')[0], validUntil: v.toISOString().split('T')[0], status: 'draft' }
+      this.quote = {
+        number: this.genNumber(),
+        date: t.toISOString().split('T')[0],
+        validUntil: v.toISOString().split('T')[0],
+        status: 'draft',
+        creator: '',
+        creatorCode: ''
+      }
+      this.syncCreator()
       this.client = { name: '', contact: '', phone: '', email: '', taxId: '', shootDate: '', note: '' }
       this.products = [{ enabled: true, name: '精修電子檔', qty: 10, unit: '張', price: 0, note: '雲端交件' }]
       this.addons = []
@@ -1286,8 +1390,31 @@ createApp({
     async archiveToDrive() {
       if (!this.settings.scriptUrl) { this.showToast('請先填入 Google Apps Script 網址', 'error'); return }
       if (!this.client.name) { this.showToast('請先填入客戶名稱才能歸檔', 'error'); return }
+
+      // 樂觀鎖：若此報價是從雲端載入的，先檢查雲端版本是否在載入後被別人改過
+      if (this.quote.baselineLastEditedAt) {
+        try {
+          const res = await fetch(this.settings.scriptUrl + '?action=list')
+          const data = await res.json()
+          if (data.ok) {
+            const cloudQuote = (data.quotes || []).find(q => q.quoteNumber === this.quote.number)
+            if (cloudQuote && cloudQuote.lastEditedAt && cloudQuote.lastEditedAt !== this.quote.baselineLastEditedAt) {
+              const t = new Date(cloudQuote.lastEditedAt).toLocaleString('zh-TW')
+              const editor = cloudQuote.lastEditedBy || '其他人'
+              const ok = confirm(
+                `⚠️ 衝突警告\n\n此報價在你載入後被「${editor}」於 ${t} 修改過。\n` +
+                `繼續歸檔將覆蓋對方的修改。\n\n是否確定覆蓋？\n（建議：先按取消，重新從歷史報價載入最新版本後再編輯）`
+              )
+              if (!ok) return
+            }
+          }
+        } catch {}
+      }
+
       this.saveClientToHistory()
       this.archiving = true
+      this.quote.lastEditedBy = (this.currentUser && this.currentUser.name) || ''
+      this.quote.lastEditedAt = new Date().toISOString()
       const wasMode = this.docMode
       const wasPreview = this.previewMode
       try {
@@ -1329,6 +1456,10 @@ createApp({
           validUntil: this.quote.validUntil,
           status: this.quote.status,
           statusLabel: this.statusLabel(this.quote.status),
+          creator: this.quote.creator || '',
+          creatorCode: this.quote.creatorCode || '',
+          lastEditedBy: this.quote.lastEditedBy || '',
+          lastEditedAt: this.quote.lastEditedAt || '',
           clientName: this.client.name,
           clientPhone: this.client.phone || '',
           clientEmail: this.client.email || '',
@@ -1381,9 +1512,17 @@ createApp({
         const data = await res.json()
         if (!data.ok || !data.state) throw new Error(data.error || '載入失敗')
         this.applyState(data.state)
+        // 設定基準時間，後續歸檔時用來偵測衝突
+        this.quote.baselineLastEditedAt = (data.state.quote && data.state.quote.lastEditedAt) || ''
         this.previewMode = false
         this.showHistory = false
-        this.showToast('✅ 報價單載入成功')
+        const editor = (data.state.quote && data.state.quote.lastEditedBy) || ''
+        const at = (data.state.quote && data.state.quote.lastEditedAt) || ''
+        if (editor && at) {
+          this.showToast(`✅ 載入成功（最後由 ${editor} 編輯於 ${new Date(at).toLocaleString('zh-TW')}）`)
+        } else {
+          this.showToast('✅ 報價單載入成功')
+        }
       } catch (err) {
         this.showToast('載入失敗：' + err.message, 'error')
       }
@@ -1420,18 +1559,28 @@ createApp({
   },
 
   mounted() {
-    if (!this.quote.number) this.quote.number = this.genNumber()
     const saved = localStorage.getItem('portraitQuoteSettings')
     if (saved) {
       try {
         const s = JSON.parse(saved)
         if (s.company)  Object.assign(this.company, s.company)
-        if (s.settings) Object.assign(this.settings, s.settings)
-        if (!this.quote.number.startsWith(this.settings.quotePrefix)) {
-          this.quote.number = this.genNumber()
+        if (s.settings) {
+          // 合併但確保 users 至少有一筆
+          if (s.settings.users && s.settings.users.length > 0) {
+            this.settings.users = s.settings.users
+          }
+          if (s.settings.currentUserId) this.settings.currentUserId = s.settings.currentUserId
+          if (s.settings.scriptUrl !== undefined) this.settings.scriptUrl = s.settings.scriptUrl
+          if (s.settings.quotePrefix) this.settings.quotePrefix = s.settings.quotePrefix
+          // 確保 currentUserId 在 users 中
+          if (!this.settings.users.find(u => u.id === this.settings.currentUserId)) {
+            this.settings.currentUserId = this.settings.users[0].id
+          }
         }
       } catch {}
     }
+    this.quote.number = this.genNumber()
+    this.syncCreator()
     try {
       const h = localStorage.getItem('portraitClientHistory')
       if (h) this.clientHistory = JSON.parse(h)
